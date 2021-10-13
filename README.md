@@ -58,3 +58,17 @@ Login to the database and load the extension
 ```sql
 CREATE EXTENSION iban;
 ```
+
+## Development
+
+### Update iban regex
+
+You need python3 installed
+
+Obtain the newest iban specification as txt from [here](https://www.swift.com/node/11971) and name it `swift_iban_registry.txt`
+
+Run the following command:
+
+```
+python3 transform-registry.py
+```

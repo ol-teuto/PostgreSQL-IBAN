@@ -1,2 +1,4 @@
 *.o
 iban.so
+iban.bc
+swift_iban_registry_txt.txt

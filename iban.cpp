@@ -32,9 +32,10 @@ extern "C"
 
 class Specification {
   public:
-	Specification(std::string structure, size_t length)
+	Specification(const std::string& structure, size_t length, bool is_sepa)
 		: structure{ structure }
 		, m_length{ length }
+		, is_sepa { is_sepa }
 	{
 	};
 	
@@ -43,31 +44,45 @@ class Specification {
 		return m_length;
 	}
 
-	std::string structure;
+	inline bool checkRegex(const std::string& str) const
+	{
+		return std::regex_match(str, structure);
+	}
+
+	inline bool isSepa() const {
+		return is_sepa;
+	}
+
 
 private:
+	std::regex structure;
 	size_t m_length;
+	bool is_sepa;
 };
 
 class Validate {
   public:
 	Validate();
 
-	bool isValid(std::string arg);
+	bool isValid(std::string arg) const;
 	
-	void addSpecification(std::string countryCode, size_t length, std::string structure) noexcept
+	bool isSepaCountry(const std::string& countryCode) const;
+
+	void addSpecification(std::string countryCode, size_t length, std::string structure, bool is_sepa) noexcept
 	{
-		specifications.emplace(countryCode, std::make_unique<Specification>(structure, length));
+		specifications.emplace(countryCode, std::make_unique<Specification>(structure, length, is_sepa));
 	}
 
+private:
 	std::map<std::string, std::unique_ptr<Specification>> specifications;
 };
 
 /* Validator global instance. */
-static Validate validator;
+static const Validate validator;
 
 /**
 * Calculates the MOD 97 10 of the passed IBAN as specified in ISO7064.
+* The passed in string is assumed to be uppercase
 *
 * @param string iban
 * @returns {bool}
@@ -112,52 +127,12 @@ static bool iso7064Mod97_10(std::string iban) {
 	return number % 97 == 1;
 }
 
-/**
-* Parse the IBAN structure used to configure each iban specification and returns a matching regular expression.
-* a structure is composed of blocks of 3 characters (one letter and 2 digits). each block represents
-* a logical group in the typical representation of the bban. for each group, the letter indicates which characters
-* are allowed in this group and the following 2-digits number tells the length of the group.
-*
-* @param {string} structure the structure to parse
-* @returns {regexp}
-*/
-static std::regex parseStructure(std::string structure) {
-	std::smatch match;
-
-	std::string::const_iterator text_iter = structure.cbegin();
-	std::ostringstream result;
-
-	while (std::regex_search(text_iter, structure.cend(), match, std::regex("(.{3})"))) {
-		std::string format;
-		char pattern = match[0].str()[0];
-		int repeats = std::stoi((match[0].str().substr(1)));
-
-		/* Parse each structure block (1-char + 2-digits) */
-		switch (pattern) {
-			case 'A': format = "0-9A-ZA-Z"; break;
-			case 'B': format = "0-9A-Z"; break;
-			case 'C': format = "A-ZA-Z"; break;
-			case 'F': format = "0-9"; break;
-			case 'L': format = "A-Z"; break;
-			case 'U': format = "A-Z"; break;
-			case 'W': format = "0-9A-Z"; break;
-		}
-
-		result << "([" << format << "]{" << repeats << "})";
-
-		text_iter = match[0].second;
-	}
-
-	std::string regex = "^" + result.str() + "$";
-	return std::regex(regex.c_str());
-}
-
-bool Validate::isValid(std::string account) {
+bool Validate::isValid(std::string account) const {
 	/* Convert uppercase */
 	std::transform(account.begin(), account.end(), account.begin(), toupper);
 
 	/* Reject anything too small */
-	if (account.length() < 3) {
+	if (account.length() < 5) {
 		return false;
 	}
 
@@ -165,192 +140,38 @@ bool Validate::isValid(std::string account) {
 	const std::string& countryCode = account.substr(0, 2);
 	const std::string& shortened = account.substr(4);
 
-	const std::unique_ptr<Specification>& specFound = specifications[countryCode];
-	if (!specFound) {
+	const auto specFound = specifications.find(countryCode);
+	if (specFound == specifications.end()) {
 		return false;
 	}
 
 	/* Test accountnumber */
-	return specFound->getLength() == account.length()
-	              && std::regex_match(shortened, parseStructure(specFound->structure))
+	return specFound->second->getLength() == account.length()
+	              && specFound->second->checkRegex(shortened)
 	              && iso7064Mod97_10(account);
 }
 
+bool Validate::isSepaCountry(const std::string& countryCode) const {
+	std::string shortened = countryCode.substr(0, 2);
+
+	if (shortened.length() != 2) {
+		return false;
+	}
+
+	/* Convert uppercase */
+	std::transform(shortened.begin(), shortened.end(), shortened.begin(), toupper);
+
+	const auto specFound = specifications.find(shortened);
+	if (specFound == specifications.end()) {
+		return false;
+	}
+
+	return specFound->second->isSepa();
+
+}
+
 Validate::Validate() {
-	addSpecification(
-	                     "AD", 24, "F04F04A12");
-	addSpecification(
-	                     "AE", 23, "F03F16");
-	addSpecification(
-	                     "AL", 28, "F08A16");
-	addSpecification(
-	                     "AT", 20, "F05F11");
-	addSpecification(
-	                     "AZ", 28, "U04A20");
-	addSpecification(
-	                     "BA", 20, "F03F03F08F02");
-	addSpecification(
-	                     "BE", 16, "F03F07F02");
-	addSpecification(
-	                     "BG", 22, "U04F04F02A08");
-	addSpecification(
-	                     "BH", 22, "U04A14");
-	addSpecification(
-	                     "BR", 29, "F08F05F10U01A01");
-	addSpecification(
-	                     "CH", 21, "F05A12");
-	addSpecification(
-	                     "CR", 21, "F03F14");
-	addSpecification(
-	                     "CY", 28, "F03F05A16");
-	addSpecification(
-	                     "CZ", 24, "F04F06F10");
-	addSpecification(
-	                     "DE", 22, "F08F10");
-	addSpecification(
-	                     "DK", 18, "F04F09F01");
-	addSpecification(
-	                     "DO", 28, "U04F20");
-	addSpecification(
-	                     "EE", 20, "F02F02F11F01");
-	addSpecification(
-	                     "ES", 24, "F04F04F01F01F10");
-	addSpecification(
-	                     "FI", 18, "F06F07F01");
-	addSpecification(
-	                     "FO", 18, "F04F09F01");
-	addSpecification(
-	                     "FR", 27, "F05F05A11F02");
-	addSpecification(
-	                     "GB", 22, "U04F06F08");
-	addSpecification(
-	                     "GE", 22, "U02F16");
-	addSpecification(
-	                     "GI", 23, "U04A15");
-	addSpecification(
-	                     "GL", 18, "F04F09F01");
-	addSpecification(
-	                     "GR", 27, "F03F04A16");
-	addSpecification(
-	                     "GT", 28, "A04A20");
-	addSpecification(
-	                     "HR", 21, "F07F10");
-	addSpecification(
-	                     "HU", 28, "F03F04F01F15F01");
-	addSpecification(
-	                     "IE", 22, "U04F06F08");
-	addSpecification(
-	                     "IL", 23, "F03F03F13");
-	addSpecification(
-	                     "IS", 26, "F04F02F06F10");
-	addSpecification(
-	                     "IT", 27, "U01F05F05A12");
-	addSpecification(
-	                     "KW", 30, "U04A22");
-	addSpecification(
-	                     "KZ", 20, "F03A13");
-	addSpecification(
-	                     "LB", 28, "F04A20");
-	addSpecification(
-	                     "LC", 32, "U04F24");
-	addSpecification(
-	                     "LI", 21, "F05A12");
-	addSpecification(
-	                     "LT", 20, "F05F11");
-	addSpecification(
-	                     "LU", 20, "F03A13");
-	addSpecification(
-	                     "LV", 21, "U04A13");
-	addSpecification(
-	                     "MC", 27, "F05F05A11F02");
-	addSpecification(
-	                     "MD", 24, "U02A18");
-	addSpecification(
-	                     "ME", 22, "F03F13F02");
-	addSpecification(
-	                     "MK", 19, "F03A10F02");
-	addSpecification(
-	                     "MR", 27, "F05F05F11F02");
-	addSpecification(
-	                     "MT", 31, "U04F05A18");
-	addSpecification(
-	                     "MU", 30, "U04F02F02F12F03U03");
-	addSpecification(
-	                     "NL", 18, "U04F10");
-	addSpecification(
-	                     "NO", 15, "F04F06F01");
-	addSpecification(
-	                     "PK", 24, "U04A16");
-	addSpecification(
-	                     "PL", 28, "F08F16");
-	addSpecification(
-	                     "PS", 29, "U04A21");
-	addSpecification(
-	                     "PT", 25, "F04F04F11F02");
-	addSpecification(
-	                     "RO", 24, "U04A16");
-	addSpecification(
-	                     "RS", 22, "F03F13F02");
-	addSpecification(
-	                     "SA", 24, "F02A18");
-	addSpecification(
-	                     "SE", 24, "F03F16F01");
-	addSpecification(
-	                     "SI", 19, "F05F08F02");
-	addSpecification(
-	                     "SK", 24, "F04F06F10");
-	addSpecification(
-	                     "SM", 27, "U01F05F05A12");
-	addSpecification(
-	                     "ST", 25, "F08F11F02");
-	addSpecification(
-	                     "TL", 23, "F03F14F02");
-	addSpecification(
-	                     "TN", 24, "F02F03F13F02");
-	addSpecification(
-	                     "TR", 26, "F05F01A16");
-	addSpecification(
-	                     "VG", 24, "U04F16");
-	addSpecification(
-	                     "XK", 20, "F04F10F02");
-	addSpecification(
-	                     "AO", 25, "F21");
-	addSpecification(
-	                     "BF", 27, "F23");
-	addSpecification(
-	                     "BI", 16, "F12");
-	addSpecification(
-	                     "BJ", 28, "F24");
-	addSpecification(
-	                     "CI", 28, "U01F23");
-	addSpecification(
-	                     "CM", 27, "F23");
-	addSpecification(
-	                     "CV", 25, "F21");
-	addSpecification(
-	                     "DZ", 24, "F20");
-	addSpecification(
-	                     "IR", 26, "F22");
-	addSpecification(
-	                     "JO", 30, "A04F22");
-	addSpecification(
-	                     "MG", 27, "F23");
-	addSpecification(
-	                     "ML", 28, "U01F23");
-	addSpecification(
-	                     "MZ", 25, "F21");
-	addSpecification(
-	                     "QA", 29, "U04A21");
-	addSpecification(
-	                     "SN", 28, "U01F23");
-	addSpecification(
-	                     "UA", 29, "F25");
-	addSpecification(
-	                     "EG", 27, "F23");
-	addSpecification(
-	                     "CG", 27, "F23");
-	addSpecification(
-	                     "GA", 27, "F23");
+#include "generated_specs.txt"
 }
 
 /**
@@ -363,23 +184,7 @@ Validate::Validate() {
 */
 namespace {
 
-bool account_validate_text(text *iban) {
-	char *ciban;
-	bool result;
-
-	ciban = text_to_cstring(iban);
-
-	try {
-		result = validator.isValid(ciban);
-	} catch (std::exception& e) {
-		elog(ERROR, "%s", e.what());
-		return false;
-	}
-
-	return result;
-}
-
-bool account_validate_str(char *iban) {
+bool account_validate_str(const char *iban) {
 	bool result;
 
 	try {
@@ -388,6 +193,37 @@ bool account_validate_str(char *iban) {
 		elog(ERROR, "%s", e.what());
 		return false;
 	}
+
+	return result;
+}
+
+bool account_validate_text(const text *iban) {
+	char *ciban;
+	bool result;
+
+	ciban = text_to_cstring(iban);
+
+	result = account_validate_str(ciban);
+
+	pfree(ciban);
+
+	return result;
+}
+
+bool sepa_validate_country(const text *txt) {
+	char *ccountry;
+	bool result = false;
+
+	ccountry = text_to_cstring(txt);
+
+	try {
+		result = validator.isSepaCountry(ccountry);
+	} catch (std::exception& e) {
+		elog(ERROR, "%s", e.what());
+		result = false;
+	}
+
+	pfree(ccountry);
 
 	return result;
 }
@@ -472,6 +308,20 @@ iban_validate(PG_FUNCTION_ARGS) {
 	text     *iban = PG_GETARG_TEXT_P(0);
 
 	bool result = account_validate_text(iban);
+
+	PG_RETURN_BOOL(result);
+}
+
+/* Verify, that a country code is in sepa
+only checks the first 2 letters and ignores the rest */
+
+PG_FUNCTION_INFO_V1(is_sepa_country);
+
+Datum
+is_sepa_country(PG_FUNCTION_ARGS) {
+	text     *txt = PG_GETARG_TEXT_P(0);
+
+	bool result = sepa_validate_country(txt);
 
 	PG_RETURN_BOOL(result);
 }

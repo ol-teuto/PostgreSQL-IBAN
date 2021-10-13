@@ -65,3 +65,10 @@ CREATE OR REPLACE FUNCTION iban_validate(text)
   IMMUTABLE STRICT;
 COMMENT ON FUNCTION iban_validate (text)
   IS 'Validate IBAN account';
+
+CREATE OR REPLACE FUNCTION is_sepa_country(text)
+  RETURNS boolean AS 'MODULE_PATHNAME'
+  LANGUAGE C
+  IMMUTABLE STRICT;
+COMMENT ON FUNCTION is_sepa_country (text)
+  IS 'check if the supplied string starts with a SEPA country code';
