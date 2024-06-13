@@ -59,7 +59,7 @@ addSpecification("MU", 30, "^[A-Z]{4}[0-9]{2}[0-9]{2}[0-9]{12}[0-9]{3}[A-Z]{3}$"
 addSpecification("NI", 28, "^[A-Z]{4}[0-9]{20}$", false);
 addSpecification("NL", 18, "^[A-Z]{4}[0-9]{10}$", true);
 addSpecification("NO", 15, "^[0-9]{4}[0-9]{6}[0-9]{1}$", true);
-addSpecification("PK", 24, "^[A-Z]{4}[A-Za-z0-9]{16}$", false);
+addSpecification("OM", 23, "^[0-9]{3}[A-Za-z0-9]{16}$", false);
 addSpecification("PL", 28, "^[0-9]{8}[0-9]{16}$", true);
 addSpecification("PS", 29, "^[A-Z]{4}[A-Za-z0-9]{21}$", false);
 addSpecification("PT", 25, "^[0-9]{4}[0-9]{4}[0-9]{11}[0-9]{2}$", true);
